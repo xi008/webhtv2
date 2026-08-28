@@ -1,36 +1,56 @@
-name: 同步 Silent1566/webhtv (代码+Release包)
+name: 同步 Silent1566/webhtv 最新版本(仅手动)
+
 on:
-  workflow_dispatch:  # 支持手动点击运行
-  schedule:
-    - cron: '0 0 * * *' # 每天 UTC 0点，北京时间早上8点自动同步一次
+  workflow_dispatch:
 
 permissions:
-  contents: write  # 必须开启读写权限，才能创建Release上传二进制包
-
-env:
-  SOURCE_REPO: "Silent1566/webhtv"
-  TARGET_REPO: ${{ github.repository }}
+  contents: write
 
 jobs:
   sync_code:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: 镜像同步源码与Tag
-        uses: wearerequired/git-mirror-action@v1
-        with:
-          source-repo: "https://github.com/${{ env.SOURCE_REPO }}.git"
-          destination-repo: "https://github.com/${{ env.TARGET_REPO }}.git"
+      - name: 完整镜像源码与标签
+        run: |
+          git config --global user.name "github‑actions[bot]"
+          git config --global user.email "github‑actions[bot]@users.noreply.github.com"
+          git clone --mirror https://github.com/Silent1566/webhtv.git source.git
+          cd source.git
+          git remote set-url push "https://${GH_TOKEN}@github.com/xi008/webhtv2.git"
+          git push --mirror push
 
-  sync_release:
+  sync_latest_release:
     needs: sync_code
     runs-on: ubuntu-latest
     steps:
-      - name: 同步Release连同Assets软件包
-        uses: YuZhiYuanOrg/release-sync@v1
-        with:
-          source_repo: ${{ env.SOURCE_REPO }}
-          target_repo: ${{ env.TARGET_REPO }}
-          platforms: github
-          sync_body: true
-          sync_assets: true   # ✅复制发行版里的软件包
-          skip_exist: true    # 已存在的tag版本跳过，避免重复
+      - name: 仅同步最新Release，旧版本忽略
+        run: |
+          set -e
+          LATEST=$(curl -s "https://api.github.com/repos/Silent1566/webhtv/releases/latest")
+          TAG_NAME=$(echo "$LATEST" | jq -r '.tag_name')
+          if [[ "$TAG_NAME" == "null" ]]; then
+            echo "上游无Release，结束任务"
+            exit 0
+          fi
+          echo "上游最新tag: $TAG_NAME"
+
+          EXISTS=$(curl -s -o /dev/null -w "%{http_code}" "https://api.github.com/repos/xi008/webhtv2/releases/tags/$TAG_NAME")
+          if [[ "$EXISTS" == "200" ]]; then
+            echo "该Release已存在，跳过上传"
+            exit 0
+          fi
+
+          BODY=$(echo "$LATEST" | jq -r '.body')
+          ASSETS=$(echo "$LATEST" | jq -r '.assets[].browser_download_url')
+          mkdir -p ./assets
+          for url in $ASSETS; do
+            wget -q "$url" -P ./assets/
+          done
+
+          gh release create "$TAG_NAME" ./assets/* \
+            --title "$(echo "$LATEST" | jq -r '.name')" \
+            --notes "$BODY"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
