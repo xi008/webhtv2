@@ -19,11 +19,19 @@ jobs:
           TAG=$(echo "$LATEST" | jq -r '.tag_name')
           [ "$TAG" = "null" ] && { echo "上游无release"; exit 0; }
           echo "上游最新tag: $TAG"
-          [ "$(curl -s -o /dev/null -w "%{http_code}" "https://api.github.com/repos/xi008/webhtv2/releases/tags/$TAG")" = "200" ] && { echo "版本已存在，跳过"; exit 0; }
-          mkdir -p assets
-          echo "$LATEST" | jq -r '.assets[].browser_download_url' | while read u; do
-            wget -q "$u" -P assets/
+
+          # 删除本地所有旧Release（保留要同步的这个tag本身）
+          gh release list --limit 100 | awk '{print $1}' | while read t; do
+            [ "$t" != "$TAG" ] && gh release delete "$t" --yes --cleanup-tag
           done
-          gh release create "$TAG" ./assets/* --title "$(echo "$LATEST" | jq -r '.name')" --notes "$(echo "$LATEST" | jq -r '.body')"
+
+          # 本地已存在最新版则跳过，否则下载并创建
+          if [ "$(curl -s -o /dev/null -w "%{http_code}" "https://api.github.com/repos/xi008/webhtv2/releases/tags/$TAG")" != "200" ]; then
+            mkdir -p assets
+            echo "$LATEST" | jq -r '.assets[].browser_download_url' | while read u; do
+              wget -q "$u" -P assets/
+            done
+            gh release create "$TAG" ./assets/* --title "$(echo "$LATEST" | jq -r '.name')" --notes "$(echo "$LATEST" | jq -r '.body')"
+          fi
         env:
           GITHUB_TOKEN: ${{ github.token }}
