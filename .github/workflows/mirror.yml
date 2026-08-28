@@ -9,30 +9,21 @@ jobs:
   sync_release_only:
     runs-on: ubuntu-latest
     steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
       - name: 获取并同步最新Release
         run: |
           set -e
           LATEST=$(curl -s "https://api.github.com/repos/Silent1566/webhtv/releases/latest")
           TAG=$(echo "$LATEST" | jq -r '.tag_name')
-          if [ "$TAG" = "null" ];then
-            echo "上游无release"
-            exit 0
-          fi
+          [ "$TAG" = "null" ] && { echo "上游无release"; exit 0; }
           echo "上游最新tag: $TAG"
-
-          CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://api.github.com/repos/xi008/webhtv2/releases/tags/$TAG")
-          if [ "$CODE" = "200" ];then
-            echo "版本已存在，跳过"
-            exit 0
-          fi
-
+          [ "$(curl -s -o /dev/null -w "%{http_code}" "https://api.github.com/repos/xi008/webhtv2/releases/tags/$TAG")" = "200" ] && { echo "版本已存在，跳过"; exit 0; }
           mkdir -p assets
           echo "$LATEST" | jq -r '.assets[].browser_download_url' | while read u; do
             wget -q "$u" -P assets/
           done
-
-          TITLE=$(echo "$LATEST" | jq -r '.name')
-          NOTE=$(echo "$LATEST" | jq -r '.body')
-          gh release create "$TAG" ./assets/* --title "$TITLE" --notes "$NOTE"
+          gh release create "$TAG" ./assets/* --title "$(echo "$LATEST" | jq -r '.name')" --notes "$(echo "$LATEST" | jq -r '.body')"
         env:
           GITHUB_TOKEN: ${{ github.token }}
