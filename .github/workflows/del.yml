@@ -1,4 +1,4 @@
-name: 仅同步最新Release【仅手动】
+name: 同步新Release 删除旧
 on:
   workflow_dispatch:
 
