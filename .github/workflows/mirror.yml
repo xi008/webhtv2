@@ -1,0 +1,36 @@
+name: 同步 Silent1566/webhtv (代码+Release包)
+on:
+  workflow_dispatch:  # 支持手动点击运行
+  schedule:
+    - cron: '0 0 * * *' # 每天 UTC 0点，北京时间早上8点自动同步一次
+
+permissions:
+  contents: write  # 必须开启读写权限，才能创建Release上传二进制包
+
+env:
+  SOURCE_REPO: "Silent1566/webhtv"
+  TARGET_REPO: ${{ github.repository }}
+
+jobs:
+  sync_code:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 镜像同步源码与Tag
+        uses: wearerequired/git-mirror-action@v1
+        with:
+          source-repo: "https://github.com/${{ env.SOURCE_REPO }}.git"
+          destination-repo: "https://github.com/${{ env.TARGET_REPO }}.git"
+
+  sync_release:
+    needs: sync_code
+    runs-on: ubuntu-latest
+    steps:
+      - name: 同步Release连同Assets软件包
+        uses: YuZhiYuanOrg/release-sync@v1
+        with:
+          source_repo: ${{ env.SOURCE_REPO }}
+          target_repo: ${{ env.TARGET_REPO }}
+          platforms: github
+          sync_body: true
+          sync_assets: true   # ✅复制发行版里的软件包
+          skip_exist: true    # 已存在的tag版本跳过，避免重复
