@@ -1,0 +1,38 @@
+name: 仅同步最新Release【仅手动】
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync_release_only:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 获取并同步最新Release
+        run: |
+          set -e
+          LATEST=$(curl -s "https://api.github.com/repos/Silent1566/webhtv/releases/latest")
+          TAG=$(echo "$LATEST" | jq -r '.tag_name')
+          [ "$TAG" = "null" ] && { echo "上游无release"; exit 0; }
+          echo "上游最新tag: $TAG"
+
+          # 用API列出本地所有Release的tag（空仓库返回[], 不会报错）
+          curl -s "https://api.github.com/repos/xi008/webhtv2/releases?per_page=100" |
+            jq -r '.[].tag_name' | while read t; do
+              [ -n "$t" ] && [ "$t" != "$TAG" ] && gh release delete "$t" --yes --cleanup-tag || true
+            done
+
+          # 本地已存在最新版则跳过，否则下载并创建
+          if [ "$(curl -s -o /dev/null -w "%{http_code}" "https://api.github.com/repos/xi008/webhtv2/releases/tags/$TAG")" != "200" ]; then
+            mkdir -p assets
+            echo "$LATEST" | jq -r '.assets[].browser_download_url' | while read u; do
+              wget -q "$u" -P assets/
+            done
+            gh release create "$TAG" ./assets/* --title "$(echo "$LATEST" | jq -r '.name')" --notes "$(echo "$LATEST" | jq -r '.body')"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
