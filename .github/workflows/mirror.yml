@@ -20,9 +20,9 @@ jobs:
           [ "$TAG" = "null" ] && { echo "上游无release"; exit 0; }
           echo "上游最新tag: $TAG"
 
-          # 删除本地所有旧Release（保留要同步的这个tag本身）
-          gh release list --limit 100 | awk '{print $1}' | while read t; do
-            [ "$t" != "$TAG" ] && gh release delete "$t" --yes --cleanup-tag
+          # 删除本地所有旧Release（用json可靠解析tag，空列表自动跳过）
+          gh release list --limit 100 --json tagName -q '.[].tagName' | while read t; do
+            [ -n "$t" ] && [ "$t" != "$TAG" ] && gh release delete "$t" --yes --cleanup-tag
           done
 
           # 本地已存在最新版则跳过，否则下载并创建
