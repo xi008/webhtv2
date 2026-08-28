@@ -1,5 +1,4 @@
-name: 同步 Silent1566/webhtv 最新版本(仅手动)
-
+name: 仅同步最新Release【仅手动】
 on:
   workflow_dispatch:
 
@@ -7,50 +6,33 @@ permissions:
   contents: write
 
 jobs:
-  sync_code:
-    runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - name: 完整镜像源码与标签
-        run: |
-          git config --global user.name "github‑actions[bot]"
-          git config --global user.email "github‑actions[bot]@users.noreply.github.com"
-          git clone --mirror https://github.com/Silent1566/webhtv.git source.git
-          cd source.git
-          git remote set-url push "https://${GH_TOKEN}@github.com/xi008/webhtv2.git"
-          git push --mirror push
-
-  sync_latest_release:
-    needs: sync_code
+  sync_release_only:
     runs-on: ubuntu-latest
     steps:
-      - name: 仅同步最新Release，旧版本忽略
+      - name: 获取并同步最新Release
         run: |
           set -e
           LATEST=$(curl -s "https://api.github.com/repos/Silent1566/webhtv/releases/latest")
-          TAG_NAME=$(echo "$LATEST" | jq -r '.tag_name')
-          if [[ "$TAG_NAME" == "null" ]]; then
-            echo "上游无Release，结束任务"
+          TAG=$(echo "$LATEST" | jq -r '.tag_name')
+          if [ "$TAG" = "null" ];then
+            echo "上游无release"
             exit 0
           fi
-          echo "上游最新tag: $TAG_NAME"
+          echo "上游最新tag: $TAG"
 
-          EXISTS=$(curl -s -o /dev/null -w "%{http_code}" "https://api.github.com/repos/xi008/webhtv2/releases/tags/$TAG_NAME")
-          if [[ "$EXISTS" == "200" ]]; then
-            echo "该Release已存在，跳过上传"
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://api.github.com/repos/xi008/webhtv2/releases/tags/$TAG")
+          if [ "$CODE" = "200" ];then
+            echo "版本已存在，跳过"
             exit 0
           fi
 
-          BODY=$(echo "$LATEST" | jq -r '.body')
-          ASSETS=$(echo "$LATEST" | jq -r '.assets[].browser_download_url')
-          mkdir -p ./assets
-          for url in $ASSETS; do
-            wget -q "$url" -P ./assets/
+          mkdir -p assets
+          echo "$LATEST" | jq -r '.assets[].browser_download_url' | while read u; do
+            wget -q "$u" -P assets/
           done
 
-          gh release create "$TAG_NAME" ./assets/* \
-            --title "$(echo "$LATEST" | jq -r '.name')" \
-            --notes "$BODY"
+          TITLE=$(echo "$LATEST" | jq -r '.name')
+          NOTE=$(echo "$LATEST" | jq -r '.body')
+          gh release create "$TAG" ./assets/* --title "$TITLE" --notes "$NOTE"
         env:
           GITHUB_TOKEN: ${{ github.token }}
